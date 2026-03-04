@@ -1,0 +1,714 @@
+<!--
+  ============================================================
+  LEXFALL TRAINING WIDGET — Squarespace Embed
+  ============================================================
+  
+  WHERE TO PASTE THIS:
+  Squarespace → Pages → Your Training Page → Edit → Add Block → Code
+  Or: Settings → Advanced → Code Injection → Footer
+  
+  WHAT IT DOES:
+  1. Shows a login screen (employee enters their ID)
+  2. Hits YOUR backend (hosted on Railway/Render)
+  3. Backend runs pre-flight (DB → Gemini → arms agent)
+  4. Starts the ElevenLabs voice conversation
+  5. When done, sends results back to your backend for scoring
+  
+  THE ONLY THING YOU CHANGE:
+  Set LEXFALL_API_URL to your backend URL (see below)
+  ============================================================
+-->
+
+<!-- ElevenLabs Conversational AI SDK -->
+<script src="https://elevenlabs.io/convai-widget/index.js" async></script>
+
+<style>
+  /* ── Container ── */
+  #lexfall-widget {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    max-width: 520px;
+    margin: 40px auto;
+    padding: 0;
+  }
+
+  /* ── Login Screen ── */
+  #lf-login {
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    border-radius: 20px;
+    padding: 48px 36px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+  }
+
+  #lf-login h2 {
+    color: #f8fafc;
+    font-size: 24px;
+    font-weight: 800;
+    margin: 0 0 8px 0;
+    letter-spacing: -0.5px;
+  }
+
+  #lf-login .subtitle {
+    color: #64748b;
+    font-size: 14px;
+    margin: 0 0 32px 0;
+  }
+
+  #lf-login input {
+    width: 100%;
+    padding: 14px 18px;
+    font-size: 16px;
+    font-family: inherit;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #f8fafc;
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+  }
+
+  #lf-login input:focus {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+  }
+
+  #lf-login input::placeholder {
+    color: #475569;
+  }
+
+  /* Scenario select */
+  #lf-login select {
+    width: 100%;
+    padding: 14px 18px;
+    font-size: 14px;
+    font-family: inherit;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: #94a3b8;
+    outline: none;
+    margin-bottom: 20px;
+    appearance: none;
+    cursor: pointer;
+    box-sizing: border-box;
+  }
+
+  #lf-login select:focus {
+    border-color: #8b5cf6;
+  }
+
+  #lf-start-btn {
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    font-family: inherit;
+    color: white;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    letter-spacing: 0.3px;
+  }
+
+  #lf-start-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.35);
+  }
+
+  #lf-start-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  #lf-login .error {
+    color: #f87171;
+    font-size: 13px;
+    margin-top: 12px;
+    display: none;
+  }
+
+  /* ── Loading Screen ── */
+  #lf-loading {
+    display: none;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    border-radius: 20px;
+    padding: 60px 36px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+  }
+
+  #lf-loading h2 {
+    color: #f8fafc;
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 8px 0;
+  }
+
+  #lf-loading .status {
+    color: #94a3b8;
+    font-size: 14px;
+    margin: 0 0 24px 0;
+  }
+
+  .lf-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(139, 92, 246, 0.2);
+    border-top-color: #8b5cf6;
+    border-radius: 50%;
+    animation: lf-spin 0.8s linear infinite;
+    margin: 0 auto 20px;
+  }
+
+  @keyframes lf-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .lf-steps {
+    text-align: left;
+    max-width: 280px;
+    margin: 0 auto;
+  }
+
+  .lf-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    font-size: 13px;
+    color: #475569;
+    transition: color 0.3s;
+  }
+
+  .lf-step.active { color: #a78bfa; }
+  .lf-step.done { color: #6ee7b7; }
+
+  .lf-step-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #334155;
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+
+  .lf-step.active .lf-step-dot { background: #8b5cf6; box-shadow: 0 0 8px rgba(139, 92, 246, 0.4); }
+  .lf-step.done .lf-step-dot { background: #10b981; }
+
+  /* ── Active Session Screen ── */
+  #lf-session {
+    display: none;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    border-radius: 20px;
+    padding: 36px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  #lf-session h2 {
+    color: #f8fafc;
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 4px 0;
+  }
+
+  #lf-session .session-info {
+    color: #64748b;
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+
+  .lf-pulse-ring {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(16, 185, 129, 0.1);
+    border: 2px solid rgba(16, 185, 129, 0.3);
+    margin: 0 auto 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: lf-pulse 2s ease-in-out infinite;
+  }
+
+  .lf-pulse-ring .mic-icon {
+    font-size: 28px;
+  }
+
+  @keyframes lf-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.2); }
+    50% { box-shadow: 0 0 0 16px rgba(16, 185, 129, 0); }
+  }
+
+  #lf-timer {
+    font-size: 32px;
+    font-weight: 700;
+    color: #6ee7b7;
+    font-variant-numeric: tabular-nums;
+    margin-bottom: 20px;
+  }
+
+  #lf-end-btn {
+    padding: 12px 32px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    color: #f87171;
+    background: rgba(248, 113, 113, 0.1);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  #lf-end-btn:hover { background: rgba(248, 113, 113, 0.2); }
+
+  /* ── Results Screen ── */
+  #lf-results {
+    display: none;
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    border-radius: 20px;
+    padding: 36px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(139, 92, 246, 0.2);
+  }
+
+  #lf-results h2 {
+    color: #f8fafc;
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+    margin: 0 0 4px 0;
+  }
+
+  .lf-score-big {
+    text-align: center;
+    font-size: 56px;
+    font-weight: 800;
+    margin: 16px 0 4px;
+    letter-spacing: -2px;
+  }
+
+  .lf-score-big.pass { color: #6ee7b7; }
+  .lf-score-big.fail { color: #fbbf24; }
+
+  .lf-pass-label {
+    text-align: center;
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 24px;
+  }
+
+  .lf-pass-label.pass { color: #10b981; }
+  .lf-pass-label.fail { color: #f59e0b; }
+
+  .lf-scores-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+
+  .lf-skill-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+  }
+
+  .lf-skill-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  .lf-skill-score {
+    font-size: 22px;
+    font-weight: 800;
+    color: #e2e8f0;
+  }
+
+  .lf-feedback-section {
+    margin-bottom: 16px;
+  }
+
+  .lf-feedback-section h3 {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .lf-feedback-section h3.green { color: #6ee7b7; }
+  .lf-feedback-section h3.amber { color: #fbbf24; }
+
+  .lf-feedback-section li {
+    color: #94a3b8;
+    font-size: 13px;
+    line-height: 1.6;
+    margin-bottom: 4px;
+    list-style: none;
+    padding-left: 16px;
+    position: relative;
+  }
+
+  .lf-feedback-section li::before {
+    content: "›";
+    position: absolute;
+    left: 0;
+    color: #475569;
+  }
+
+  #lf-summary {
+    color: #94a3b8;
+    font-size: 14px;
+    line-height: 1.6;
+    text-align: center;
+    margin-bottom: 20px;
+    font-style: italic;
+  }
+
+  #lf-retry-btn {
+    width: 100%;
+    padding: 14px;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    color: white;
+    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+
+  #lf-retry-btn:hover { transform: translateY(-2px); }
+</style>
+
+<div id="lexfall-widget">
+
+  <!-- ═══ LOGIN SCREEN ═══ -->
+  <div id="lf-login">
+    <h2>Start Training</h2>
+    <p class="subtitle">Enter your employee ID to begin your session</p>
+    <input type="text" id="lf-emp-id" placeholder="Employee ID (e.g. EMP-12345)" autocomplete="off" />
+    <select id="lf-scenario">
+      <option value="general">General Skills Assessment</option>
+      <option value="customer_de-escalation">Customer De-escalation</option>
+      <option value="food_safety">Food Safety</option>
+      <option value="upselling">Upselling & Engagement</option>
+      <option value="compliance">Compliance & Policy</option>
+      <option value="onboarding">New Employee Onboarding</option>
+    </select>
+    <button id="lf-start-btn" onclick="lexfallStart()">Begin Session</button>
+    <p class="error" id="lf-error"></p>
+  </div>
+
+  <!-- ═══ LOADING / PRE-FLIGHT ═══ -->
+  <div id="lf-loading">
+    <div class="lf-spinner"></div>
+    <h2>Preparing Your Session</h2>
+    <p class="status" id="lf-status">Setting things up...</p>
+    <div class="lf-steps">
+      <div class="lf-step" id="lf-step-1"><div class="lf-step-dot"></div>Loading your profile</div>
+      <div class="lf-step" id="lf-step-2"><div class="lf-step-dot"></div>Building training plan</div>
+      <div class="lf-step" id="lf-step-3"><div class="lf-step-dot"></div>Preparing your trainer</div>
+      <div class="lf-step" id="lf-step-4"><div class="lf-step-dot"></div>Ready to go</div>
+    </div>
+  </div>
+
+  <!-- ═══ ACTIVE SESSION ═══ -->
+  <div id="lf-session">
+    <h2 id="lf-greeting">Training in Progress</h2>
+    <p class="session-info" id="lf-session-info">Speak naturally — your trainer is listening</p>
+    <div class="lf-pulse-ring"><span class="mic-icon">🎙️</span></div>
+    <div id="lf-timer">0:00</div>
+    <button id="lf-end-btn" onclick="lexfallEnd()">End Session</button>
+  </div>
+
+  <!-- ═══ RESULTS ═══ -->
+  <div id="lf-results">
+    <h2>Session Complete</h2>
+    <div class="lf-score-big" id="lf-final-score">—</div>
+    <div class="lf-pass-label" id="lf-pass-label"></div>
+    <div class="lf-scores-grid" id="lf-scores-grid"></div>
+    <div class="lf-feedback-section">
+      <h3 class="green">Strengths</h3>
+      <ul id="lf-strengths"></ul>
+    </div>
+    <div class="lf-feedback-section">
+      <h3 class="amber">Areas to Improve</h3>
+      <ul id="lf-improvements"></ul>
+    </div>
+    <p id="lf-summary"></p>
+    <button id="lf-retry-btn" onclick="lexfallRetry()">Train Again</button>
+  </div>
+
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// CONFIGURATION — CHANGE THIS TO YOUR BACKEND URL
+// ════════════════════════════════════════════════════════════
+const LEXFALL_API_URL = "https://your-lexfall-backend.railway.app";
+// After deploying server.py to Railway/Render, put that URL here.
+// Example: "https://lexfall-api-production.up.railway.app"
+
+// Your org ID (set during onboarding)
+const LEXFALL_ORG_ID = "your_org_id";
+// ════════════════════════════════════════════════════════════
+
+let currentSession = null;
+let timerInterval = null;
+let sessionStart = null;
+
+// ── Show/hide screens ──
+function showScreen(id) {
+  ["lf-login", "lf-loading", "lf-session", "lf-results"].forEach(s => {
+    document.getElementById(s).style.display = "none";
+  });
+  document.getElementById(id).style.display = "block";
+}
+
+// ── Animate pre-flight steps ──
+function activateStep(n) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById("lf-step-" + i);
+    el.className = "lf-step" + (i < n ? " done" : i === n ? " active" : "");
+  }
+}
+
+// ── Timer ──
+function startTimer() {
+  sessionStart = Date.now();
+  timerInterval = setInterval(() => {
+    const elapsed = Math.floor((Date.now() - sessionStart) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    document.getElementById("lf-timer").textContent =
+      mins + ":" + secs.toString().padStart(2, "0");
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  return Math.floor((Date.now() - sessionStart) / 1000);
+}
+
+// ══════════════════════════════════════════
+// START SESSION
+// ══════════════════════════════════════════
+async function lexfallStart() {
+  const empId = document.getElementById("lf-emp-id").value.trim();
+  const scenario = document.getElementById("lf-scenario").value;
+  const errorEl = document.getElementById("lf-error");
+
+  if (!empId) {
+    errorEl.textContent = "Please enter your employee ID";
+    errorEl.style.display = "block";
+    return;
+  }
+
+  errorEl.style.display = "none";
+  document.getElementById("lf-start-btn").disabled = true;
+
+  // Show loading screen
+  showScreen("lf-loading");
+
+  try {
+    // Step 1: Loading profile
+    activateStep(1);
+    document.getElementById("lf-status").textContent = "Pulling up your profile...";
+
+    // Step 2: Hit the backend — this triggers the full pre-flight
+    activateStep(2);
+    document.getElementById("lf-status").textContent = "Building your training plan...";
+
+    const response = await fetch(LEXFALL_API_URL + "/api/session/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        org_id: LEXFALL_ORG_ID,
+        employee_id: empId,
+        scenario_type: scenario,
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.detail || "Failed to start session");
+    }
+
+    currentSession = await response.json();
+
+    // Step 3: Agent is armed
+    activateStep(3);
+    document.getElementById("lf-status").textContent = "Your trainer is ready...";
+    await new Promise(r => setTimeout(r, 800));
+
+    // Step 4: Ready
+    activateStep(4);
+    document.getElementById("lf-status").textContent = "Starting conversation!";
+    await new Promise(r => setTimeout(r, 500));
+
+    // Switch to session screen
+    showScreen("lf-session");
+    document.getElementById("lf-greeting").textContent =
+      "Training with " + (currentSession.employee_name || "you");
+    startTimer();
+
+    // Start the ElevenLabs conversation widget
+    // The signed_url connects to the agent that's already armed with context
+    if (window.ElevenLabsConversationalAI) {
+      window.lexfallConversation = await window.ElevenLabsConversationalAI.startSession({
+        signedUrl: currentSession.signed_url,
+        onConnect: () => {
+          console.log("[Lexfall] Connected to agent");
+        },
+        onDisconnect: () => {
+          console.log("[Lexfall] Agent disconnected");
+          lexfallEnd();
+        },
+        onError: (error) => {
+          console.error("[Lexfall] Error:", error);
+        },
+      });
+    }
+
+  } catch (err) {
+    console.error("[Lexfall] Start failed:", err);
+    showScreen("lf-login");
+    errorEl.textContent = err.message || "Something went wrong. Try again.";
+    errorEl.style.display = "block";
+    document.getElementById("lf-start-btn").disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════
+// END SESSION
+// ══════════════════════════════════════════
+async function lexfallEnd() {
+  const duration = stopTimer();
+
+  // End ElevenLabs conversation
+  if (window.lexfallConversation) {
+    try { await window.lexfallConversation.endSession(); } catch(e) {}
+  }
+
+  // Show loading briefly
+  showScreen("lf-loading");
+  document.getElementById("lf-status").textContent = "Scoring your session...";
+  activateStep(2);
+
+  try {
+    // Hit the scoring endpoint
+    const response = await fetch(LEXFALL_API_URL + "/api/session/end", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        session_id: currentSession.session_id,
+        conversation_id: currentSession.signed_url, // or conversation_id
+        employee_id: document.getElementById("lf-emp-id").value.trim(),
+        org_id: LEXFALL_ORG_ID,
+        scenario_type: document.getElementById("lf-scenario").value,
+        duration_secs: duration,
+      }),
+    });
+
+    if (!response.ok) throw new Error("Scoring failed");
+
+    const results = await response.json();
+    showResults(results);
+
+  } catch (err) {
+    console.error("[Lexfall] Scoring failed:", err);
+    // Still show a basic results screen
+    showResults({
+      score: null,
+      passed: false,
+      scores: {},
+      strengths: ["Session completed"],
+      improvements: ["Scoring unavailable — results will be processed shortly"],
+      summary: "Your session has been saved and will be scored shortly.",
+    });
+  }
+}
+
+// ══════════════════════════════════════════
+// SHOW RESULTS
+// ══════════════════════════════════════════
+function showResults(results) {
+  showScreen("lf-results");
+
+  // Overall score
+  const scoreEl = document.getElementById("lf-final-score");
+  const labelEl = document.getElementById("lf-pass-label");
+
+  if (results.score !== null) {
+    scoreEl.textContent = Math.round(results.score);
+    scoreEl.className = "lf-score-big " + (results.passed ? "pass" : "fail");
+    labelEl.textContent = results.passed ? "PASSED" : "KEEP PRACTICING";
+    labelEl.className = "lf-pass-label " + (results.passed ? "pass" : "fail");
+  } else {
+    scoreEl.textContent = "—";
+    labelEl.textContent = "PROCESSING";
+    labelEl.className = "lf-pass-label fail";
+  }
+
+  // Skill scores
+  const grid = document.getElementById("lf-scores-grid");
+  grid.innerHTML = "";
+  if (results.scores) {
+    Object.entries(results.scores).forEach(([skill, score]) => {
+      grid.innerHTML += `
+        <div class="lf-skill-card">
+          <div class="lf-skill-name">${skill}</div>
+          <div class="lf-skill-score">${Math.round(score)}</div>
+        </div>`;
+    });
+  }
+
+  // Strengths
+  const strengthsEl = document.getElementById("lf-strengths");
+  strengthsEl.innerHTML = "";
+  (results.strengths || []).forEach(s => {
+    strengthsEl.innerHTML += `<li>${s}</li>`;
+  });
+
+  // Improvements
+  const improvEl = document.getElementById("lf-improvements");
+  improvEl.innerHTML = "";
+  (results.improvements || []).forEach(s => {
+    improvEl.innerHTML += `<li>${s}</li>`;
+  });
+
+  // Summary
+  document.getElementById("lf-summary").textContent = results.summary || "";
+}
+
+// ══════════════════════════════════════════
+// RETRY
+// ══════════════════════════════════════════
+function lexfallRetry() {
+  currentSession = null;
+  document.getElementById("lf-start-btn").disabled = false;
+  document.getElementById("lf-timer").textContent = "0:00";
+  showScreen("lf-login");
+}
+</script>
