@@ -1,5 +1,5 @@
 """
-LEXFALL API SERVER v2 — Railway-ready
+LEXFALL API SERVER v3 — Railway-ready
 """
 
 import os
@@ -22,47 +22,48 @@ logging.basicConfig(
 )
 logger = logging.getLogger("lexfall")
 
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
-ELEVENLABS_AGENT_ID = os.environ.get("ELEVENLABS_AGENT_ID", "")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-PORT = int(os.environ.get("PORT", 8000))
-
 db_pool = None
-
-logger.info("=" * 50)
-logger.info("LEXFALL ENGINE STARTING")
-logger.info("=" * 50)
-logger.info(f"DATABASE_URL set: {bool(DATABASE_URL)}")
-logger.info(f"ELEVENLABS_API_KEY set: {bool(ELEVENLABS_API_KEY)}")
-logger.info(f"ELEVENLABS_AGENT_ID set: {bool(ELEVENLABS_AGENT_ID)}")
-logger.info(f"GEMINI_API_KEY set: {bool(GEMINI_API_KEY)}")
-logger.info(f"PORT: {PORT}")
+CONFIG = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global db_pool
+    global db_pool, CONFIG
+
+    CONFIG["DATABASE_URL"] = os.environ.get("DATABASE_URL", "")
+    CONFIG["ELEVENLABS_API_KEY"] = os.environ.get("ELEVENLABS_API_KEY", "")
+    CONFIG["ELEVENLABS_AGENT_ID"] = os.environ.get("ELEVENLABS_AGENT_ID", "")
+    CONFIG["GEMINI_API_KEY"] = os.environ.get("GEMINI_API_KEY", "")
+
+    logger.info("=" * 50)
+    logger.info("LEXFALL ENGINE STARTING v3")
+    logger.info("=" * 50)
+    logger.info(f"DATABASE_URL set: {bool(CONFIG['DATABASE_URL'])}")
+    logger.info(f"DATABASE_URL starts with: {CONFIG['DATABASE_URL'][:20]}..." if CONFIG['DATABASE_URL'] else "DATABASE_URL is empty")
+    logger.info(f"ELEVENLABS_API_KEY set: {bool(CONFIG['ELEVENLABS_API_KEY'])}")
+    logger.info(f"ELEVENLABS_AGENT_ID set: {bool(CONFIG['ELEVENLABS_AGENT_ID'])}")
+    logger.info(f"GEMINI_API_KEY set: {bool(CONFIG['GEMINI_API_KEY'])}")
+    logger.info(f"All env var keys: {[k for k in os.environ.keys() if 'DATABASE' in k or 'ELEVEN' in k or 'GEMINI' in k or 'PORT' in k]}")
+
     try:
-        logger.info("Connecting to database...")
-        if not DATABASE_URL:
+        if not CONFIG["DATABASE_URL"]:
             logger.error("DATABASE_URL is not set!")
         else:
-            db_url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-            logger.info(f"Connecting to: {db_url[:30]}...")
+            db_url = CONFIG["DATABASE_URL"].replace("postgres://", "postgresql://", 1)
+            logger.info(f"Connecting to: {db_url[:40]}...")
             db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10, timeout=30)
             logger.info("Database connected successfully!")
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
         logger.error(traceback.format_exc())
-        logger.info("Server starting without database.")
+
     yield
+
     if db_pool:
         await db_pool.close()
-        logger.info("Database pool closed.")
 
 
-app = FastAPI(title="Lexfall API", version="2.0", lifespan=lifespan)
+app = FastAPI(title="Lexfall API", version="3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -92,6 +93,7 @@ class EndSessionRequest(BaseModel):
 async def health():
     return {
         "status": "ok",
+        "version": "3.0",
         "database": "connected" if db_pool else "not connected",
         "timestamp": datetime.now().isoformat(),
     }
@@ -99,7 +101,18 @@ async def health():
 
 @app.get("/")
 async def root():
-    return {"service": "Lexfall Engine", "version": "2.0", "status": "running"}
+    return {"service": "Lexfall Engine", "version": "3.0", "status": "running"}
+
+
+@app.get("/debug/env")
+async def debug_env():
+    return {
+        "DATABASE_URL_set": bool(os.environ.get("DATABASE_URL")),
+        "ELEVENLABS_API_KEY_set": bool(os.environ.get("ELEVENLABS_API_KEY")),
+        "GEMINI_API_KEY_set": bool(os.environ.get("GEMINI_API_KEY")),
+        "env_keys_with_DB": [k for k in os.environ.keys() if "DATABASE" in k.upper() or "PG" in k.upper() or "POSTGRES" in k.upper()],
+        "total_env_vars": len(os.environ),
+    }
 
 
 @app.post("/api/session/start")
@@ -140,7 +153,7 @@ async def end_session(req: EndSessionRequest):
             org_id=req.org_id,
             employee_context=context,
             scenario_type=req.scenario_type,
-            api_key=ELEVENLABS_API_KEY,
+            api_key=CONFIG.get("ELEVENLABS_API_KEY", ""),
             duration_secs=req.duration_secs,
         )
         return {
@@ -205,4 +218,5 @@ async def get_dashboard(org_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
