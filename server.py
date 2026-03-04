@@ -10,9 +10,6 @@ import traceback
 from datetime import datetime
 from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv
-load_dotenv()
-
 import asyncpg
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,11 +22,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger("lexfall")
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-ELEVENLABS_AGENT_ID = os.getenv("ELEVENLABS_AGENT_ID")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-PORT = int(os.getenv("PORT", 8000))
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+ELEVENLABS_AGENT_ID = os.environ.get("ELEVENLABS_AGENT_ID", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+PORT = int(os.environ.get("PORT", 8000))
 
 db_pool = None
 
@@ -52,6 +49,7 @@ async def lifespan(app: FastAPI):
             logger.error("DATABASE_URL is not set!")
         else:
             db_url = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+            logger.info(f"Connecting to: {db_url[:30]}...")
             db_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10, timeout=30)
             logger.info("Database connected successfully!")
     except Exception as e:
